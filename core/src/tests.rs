@@ -163,17 +163,162 @@ fn unknown_signature_names_the_value() {
     assert_eq!(detect_format(&blob), None);
 }
 
+/// Build a Windows XP blob: 400-byte header + fixed 552-byte entries with a 528-byte inline path.
+fn build_xp(entries: &[(&str, u64)]) -> Vec<u8> {
+    let mut blob = vec![0u8; 400];
+    blob[0..4].copy_from_slice(&signature::WINXP.to_le_bytes());
+    blob[4..8].copy_from_slice(&(entries.len() as u32).to_le_bytes());
+    for (path, ft) in entries {
+        let mut entry = vec![0u8; 552];
+        let p = utf16(path);
+        entry[..p.len()].copy_from_slice(&p);
+        entry[528..536].copy_from_slice(&ft.to_le_bytes());
+        blob.extend_from_slice(&entry);
+    }
+    blob
+}
+
+/// Build a Windows 2003 32-bit blob: 8-byte header + 24-byte records + a trailing path region.
+fn build_2003_32(entries: &[(&str, u64)]) -> Vec<u8> {
+    let n = entries.len();
+    let mut header = vec![0u8; 8];
+    header[0..4].copy_from_slice(&signature::WIN2003_VISTA.to_le_bytes());
+    header[4..8].copy_from_slice(&(n as u32).to_le_bytes());
+    let paths_start = 8 + n * 24;
+    let mut records = vec![0u8; n * 24];
+    let mut paths = Vec::new();
+    for (i, (path, ft)) in entries.iter().enumerate() {
+        let p = utf16(path);
+        let off = (paths_start + paths.len()) as u32;
+        let r = &mut records[i * 24..i * 24 + 24];
+        r[0..2].copy_from_slice(&(p.len() as u16).to_le_bytes());
+        r[2..4].copy_from_slice(&(p.len() as u16).to_le_bytes());
+        r[4..8].copy_from_slice(&off.to_le_bytes());
+        r[8..16].copy_from_slice(&ft.to_le_bytes());
+        paths.extend_from_slice(&p);
+    }
+    [header, records, paths].concat()
+}
+
 #[test]
-fn legacy_signature_is_named_not_silently_dropped() {
-    let blob = signature::WINXP.to_le_bytes().to_vec();
-    assert_eq!(
-        parse(&blob),
-        Err(ShimcacheError::UnsupportedLegacy {
-            signature: signature::WINXP
-        })
-    );
-    // and the message shows the value
-    assert!(parse(&blob).unwrap_err().to_string().contains("deadbeef"));
+fn winxp_inline_path_entries() {
+    let blob = build_xp(&[(r"\??\C:\WINDOWS\system32\evil.exe", 131_000_000_000_000_000)]);
+    assert_eq!(detect_format(&blob), Some(ShimcacheFormat::WinXp));
+    let e = parse(&blob).unwrap();
+    assert_eq!(e.len(), 1);
+    assert_eq!(e[0].path, r"C:\WINDOWS\system32\evil.exe"); // \??\ + trailing NULs stripped
+    assert_eq!(e[0].last_modified_filetime, 131_000_000_000_000_000);
+    assert_eq!(e[0].executed, None); // XP records no execution flag
+}
+
+#[test]
+fn win2003_32bit_path_offset_entries() {
+    let blob = build_2003_32(&[(r"C:\a.exe", 42), (r"C:\b.dll", 99)]);
+    assert_eq!(detect_format(&blob), Some(ShimcacheFormat::Win2003_32));
+    let e = parse(&blob).unwrap();
+    assert_eq!(e.len(), 2);
+    assert_eq!(e[0].path, r"C:\a.exe");
+    assert_eq!(e[0].last_modified_filetime, 42);
+    assert_eq!(e[1].path, r"C:\b.dll");
+    assert_eq!(e[0].executed, None);
+}
+
+/// Build a Windows 2003 64-bit blob: 8-byte header + 32-byte records + a trailing path region.
+fn build_2003_64(entries: &[(&str, u64)]) -> Vec<u8> {
+    let n = entries.len();
+    let mut header = vec![0u8; 8];
+    header[0..4].copy_from_slice(&signature::WIN2003_VISTA.to_le_bytes());
+    header[4..8].copy_from_slice(&(n as u32).to_le_bytes());
+    let paths_start = 8 + n * 32;
+    let mut records = vec![0u8; n * 32];
+    let mut paths = Vec::new();
+    for (i, (path, ft)) in entries.iter().enumerate() {
+        let p = utf16(path);
+        let off = (paths_start + paths.len()) as u64;
+        let r = &mut records[i * 32..i * 32 + 32];
+        r[0..2].copy_from_slice(&(p.len() as u16).to_le_bytes());
+        r[2..4].copy_from_slice(&(p.len() as u16).to_le_bytes());
+        r[8..16].copy_from_slice(&off.to_le_bytes());
+        r[16..24].copy_from_slice(&ft.to_le_bytes());
+        paths.extend_from_slice(&p);
+    }
+    [header, records, paths].concat()
+}
+
+#[test]
+fn win2003_64bit_entries() {
+    let blob = build_2003_64(&[(r"C:\x.exe", 7)]);
+    assert_eq!(detect_format(&blob), Some(ShimcacheFormat::Win2003_64));
+    let e = parse(&blob).unwrap();
+    assert_eq!(e.len(), 1);
+    assert_eq!(e[0].path, r"C:\x.exe");
+    assert_eq!(e[0].last_modified_filetime, 7);
+    assert_eq!(e[0].executed, None);
+}
+
+#[test]
+fn xp_truncated_and_empty_entries_skip_cleanly() {
+    // Header claims 3 entries but no room for any → break, no panic.
+    let mut blob = vec![0u8; 402];
+    blob[0..4].copy_from_slice(&signature::WINXP.to_le_bytes());
+    blob[4..8].copy_from_slice(&3u32.to_le_bytes());
+    assert!(parse(&blob).unwrap().is_empty());
+    // An all-NUL (empty-path) entry is skipped.
+    assert!(parse(&build_xp(&[("", 1)])).unwrap().is_empty());
+}
+
+#[test]
+fn win2003_truncated_entries_skip_cleanly() {
+    // Header claims 5 entries but the records are truncated → the missing fields → break/skip.
+    let mut blob = vec![0u8; 10];
+    blob[0..4].copy_from_slice(&signature::WIN2003_VISTA.to_le_bytes());
+    blob[4..8].copy_from_slice(&5u32.to_le_bytes());
+    assert!(parse(&blob).unwrap().is_empty());
+    // A record whose path_offset points out of bounds is skipped.
+    let mut b = vec![0u8; 8 + 24];
+    b[0..4].copy_from_slice(&signature::WIN2003_VISTA.to_le_bytes());
+    b[4..8].copy_from_slice(&1u32.to_le_bytes());
+    b[8..10].copy_from_slice(&10u16.to_le_bytes()); // path_size
+    b[12..16].copy_from_slice(&99_999u32.to_le_bytes()); // path_offset out of bounds
+    assert!(parse(&b).unwrap().is_empty());
+}
+
+/// Build a valid Windows 7 64-bit blob (128-byte header, 48-byte records + path region).
+fn build_win7_64(entries: &[(&str, u64, bool)]) -> Vec<u8> {
+    let n = entries.len();
+    let mut header = vec![0u8; 128];
+    header[0..4].copy_from_slice(&signature::WIN7.to_le_bytes());
+    header[4..8].copy_from_slice(&(n as u32).to_le_bytes());
+    let paths_start = 128 + n * 48;
+    let mut records = vec![0u8; n * 48];
+    let mut paths = Vec::new();
+    for (i, (path, ft, exec)) in entries.iter().enumerate() {
+        let p = utf16(path);
+        let off = (paths_start + paths.len()) as u64;
+        let r = &mut records[i * 48..i * 48 + 48];
+        r[0..2].copy_from_slice(&(p.len() as u16).to_le_bytes());
+        r[2..4].copy_from_slice(&(p.len() as u16).to_le_bytes());
+        r[8..16].copy_from_slice(&off.to_le_bytes());
+        r[16..24].copy_from_slice(&ft.to_le_bytes());
+        r[24..28].copy_from_slice(&(if *exec { 2u32 } else { 0 }).to_le_bytes());
+        paths.extend_from_slice(&p);
+    }
+    [header, records, paths].concat()
+}
+
+#[test]
+fn win7_64bit_roundtrip() {
+    let blob = build_win7_64(&[(
+        r"C:\Windows\System32\svchost.exe",
+        130_000_000_000_000_000,
+        true,
+    )]);
+    assert_eq!(detect_format(&blob), Some(ShimcacheFormat::Win7_64));
+    let e = parse(&blob).unwrap();
+    assert_eq!(e.len(), 1);
+    assert_eq!(e[0].path, r"C:\Windows\System32\svchost.exe");
+    assert_eq!(e[0].last_modified_filetime, 130_000_000_000_000_000);
+    assert_eq!(e[0].executed, Some(true));
 }
 
 #[test]

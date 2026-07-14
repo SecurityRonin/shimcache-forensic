@@ -18,7 +18,11 @@ fn shimcache4n6_analyzes_a_real_system_hive_end_to_end() {
         .output()
         .expect("run shimcache4n6");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "shimcache4n6 failed: {:?}", out.status);
+    assert!(
+        out.status.success(),
+        "shimcache4n6 failed: {:?}",
+        out.status
+    );
     // The whole-hive path reads Win7-64 AppCompatCache from ControlSet001 → 292 entries.
     assert!(
         stdout.contains("Win7_64, ControlSet001, 292 entries"),

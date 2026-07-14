@@ -40,6 +40,12 @@ const ENTRY_SIG_8_0: &[u8; 4] = b"00ts";
 /// The detected AppCompatCache format variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShimcacheFormat {
+    /// Windows XP 32-bit (fixed 552-byte entries with an inline 528-byte path).
+    WinXp,
+    /// Windows Server 2003 / Vista / 2008 (`0xbadc0ffe`), 32-bit cached entries.
+    Win2003_32,
+    /// Windows Server 2003 / Vista / 2008 (`0xbadc0ffe`), 64-bit cached entries.
+    Win2003_64,
     /// Windows 7 / Server 2008 R2, 32-bit cached entries.
     Win7_32,
     /// Windows 7 / Server 2008 R2, 64-bit cached entries.
@@ -79,12 +85,6 @@ pub enum ShimcacheError {
         /// The 4-byte signature that was found (little-endian u32).
         signature: u32,
     },
-    /// A legacy format recognized but not decoded by this crate (Windows XP / 2003 / Vista).
-    /// The `FILETIME` layout of these is decodable but no maintained corpus validates it here.
-    UnsupportedLegacy {
-        /// Which legacy signature was found.
-        signature: u32,
-    },
 }
 
 impl fmt::Display for ShimcacheError {
@@ -96,10 +96,6 @@ impl fmt::Display for ShimcacheError {
             Self::UnknownSignature { signature } => {
                 write!(f, "unknown AppCompatCache signature 0x{signature:08x}")
             }
-            Self::UnsupportedLegacy { signature } => write!(
-                f,
-                "legacy AppCompatCache signature 0x{signature:08x} (Windows XP/2003/Vista) not decoded"
-            ),
         }
     }
 }
@@ -112,6 +108,8 @@ impl std::error::Error for ShimcacheError {}
 pub fn detect_format(blob: &[u8]) -> Option<ShimcacheFormat> {
     let sig = read_u32(blob, 0)?;
     match sig {
+        signature::WINXP => Some(ShimcacheFormat::WinXp),
+        signature::WIN2003_VISTA => Some(detect_2003_bitness(blob)),
         signature::WIN7 => Some(detect_win7_bitness(blob)),
         signature::WIN8 => win8_entry_variant(blob).map(|is_8_1| {
             if is_8_1 {
@@ -143,17 +141,56 @@ fn win8_entry_variant(blob: &[u8]) -> Option<bool> {
 pub fn parse(blob: &[u8]) -> Result<Vec<ShimcacheEntry>, ShimcacheError> {
     let sig = read_u32(blob, 0).ok_or(ShimcacheError::TooShort { len: blob.len() })?;
     match sig {
+        signature::WINXP => Ok(parse_xp(blob)),
+        signature::WIN2003_VISTA => Ok(parse_2003(blob, detect_2003_bitness(blob))),
         signature::WIN7 => Ok(parse_win7(blob, detect_win7_bitness(blob))),
         signature::WIN8 => match win8_entry_variant(blob) {
             Some(is_8_1) => Ok(parse_win8(blob, 128, is_8_1)),
             None => Err(ShimcacheError::UnknownSignature { signature: sig }),
         },
         signature::WIN10 | signature::WIN10_CREATORS => Ok(parse_win10(blob, sig as usize)),
-        signature::WINXP | signature::WIN2003_VISTA => {
-            Err(ShimcacheError::UnsupportedLegacy { signature: sig })
-        }
         _ => Err(ShimcacheError::UnknownSignature { signature: sig }),
     }
+}
+
+/// Windows XP header is 400 bytes (signature, entry count, LRU table); each cached entry is a
+/// fixed 552 bytes — a 528-byte inline UTF-16LE path (`MAX_PATH`, NUL-padded) followed by the
+/// last-modification `FILETIME`, file size, and last-update time. XP records no execution flag.
+const XP_HEADER: usize = 400;
+const XP_ENTRY: usize = 552;
+const XP_PATH_BYTES: usize = 528;
+
+fn parse_xp(blob: &[u8]) -> Vec<ShimcacheEntry> {
+    let _ = blob; // RED stub
+    Vec::new()
+}
+
+/// Windows 2003/Vista/2008 (`0xbadc0ffe`): an 8-byte header (signature, count) then fixed-size
+/// records whose path lives at an absolute `path_offset`. The 32-bit record is 24 bytes, the
+/// 64-bit 32 bytes; the path (`path_size`@0, `path_offset`@4/@8) and last-modification time are at
+/// the same offsets in both, so path + time decode unambiguously (the trailing field — file size
+/// on 2003, flags on Vista — is not needed and no execution flag is surfaced).
+const WIN2003_HEADER: usize = 8;
+const WIN2003_ENTRY_32: usize = 24;
+const WIN2003_ENTRY_64: usize = 32;
+
+fn detect_2003_bitness(blob: &[u8]) -> ShimcacheFormat {
+    // Default to 32-bit; pick 64-bit only when its first path_offset (a u64 at entry offset 8)
+    // lands past the 64-bit records region and inside the blob — a structural check.
+    let n = read_u32(blob, 4).unwrap_or(0) as usize;
+    let po64 = read_u64(blob, WIN2003_HEADER + 8);
+    let end64 = (WIN2003_HEADER + n.saturating_mul(WIN2003_ENTRY_64)) as u64;
+    let len = blob.len() as u64;
+    if po64.is_some_and(|p| p >= end64 && p < len && p % 2 == 0) {
+        ShimcacheFormat::Win2003_64
+    } else {
+        ShimcacheFormat::Win2003_32
+    }
+}
+
+fn parse_2003(blob: &[u8], fmt: ShimcacheFormat) -> Vec<ShimcacheEntry> {
+    let _ = (blob, fmt); // RED stub
+    Vec::new()
 }
 
 /// Windows 7 header is 128 bytes; the fixed-size entry records begin there and the path strings
