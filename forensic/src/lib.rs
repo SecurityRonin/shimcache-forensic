@@ -90,8 +90,28 @@ pub fn analyze_blob(
 /// Audit decoded ShimCache entries for graded anomalies (may be empty).
 #[must_use]
 pub fn audit(entries: &[ShimcacheEntry]) -> Vec<ShimcacheAnomaly> {
-    let _ = entries; // RED stub
-    Vec::new()
+    let mut out = Vec::new();
+    for e in entries {
+        let name = base_name(&e.path);
+        let upper = e.path.to_uppercase();
+        let in_system = upper.contains(r"\SYSTEM32\") || upper.contains(r"\SYSWOW64\");
+        // System-binary baseline + suspicious-location list are shared DFIR knowledge — they
+        // live in forensicnomicon, not baked in here.
+        if forensicnomicon::processes::is_system32_binary(&name) && !in_system {
+            out.push(ShimcacheAnomaly::SystemBinaryRelocated {
+                name: name.to_uppercase(),
+                path: e.path.clone(),
+            });
+        }
+        if forensicnomicon::heuristics::paths::is_suspicious_exec_path(&e.path) {
+            out.push(ShimcacheAnomaly::SuspiciousPath {
+                executable: name,
+                path: e.path.clone(),
+                executed: e.executed,
+            });
+        }
+    }
+    out
 }
 
 /// The base name (last `\`/`/`-component) of a Windows path.
