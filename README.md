@@ -6,7 +6,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-h4x0r-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/h4x0r)
 
-**Prove what was on a Windows box — and, on Windows 7/8, what *ran* — straight from the `SYSTEM` hive's AppCompatCache (ShimCache), on any OS.** A panic-free decoder (Windows 7/8.0/8.1/10) plus an analyzer that flags masquerading and execution from staging directories.
+**Prove what was on a Windows box — and, on Windows 7/8, what *ran* — straight from the `SYSTEM` hive's AppCompatCache (ShimCache), on any OS.** A panic-free decoder (Windows XP through 11) plus an analyzer that flags masquerading and execution from staging directories.
 
 ## Run it
 
@@ -25,7 +25,7 @@ Findings (29):
 
 ## What it decodes
 
-The AppCompatCache value at `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache`. Per entry: the **executable path**, the file's **last-modification `FILETIME`**, and — on Windows 7/8 — the **execution flag** (`insertion_flags & 0x2`). Windows 10 dropped the flag, so `executed` is `None` there. Supported formats: **Windows 7 (32/64-bit), 8.0, 8.1, 10/11**. Legacy XP/2003/Vista return a *named* error rather than a silent miss.
+The AppCompatCache value at `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache`. Per entry: the **executable path**, the file's **last-modification `FILETIME`**, and — on Windows 7/8 — the **execution flag** (`insertion_flags & 0x2`). Windows 10 dropped the flag, so `executed` is `None` there. Supported formats: **Windows XP, Server 2003 / Vista / 2008 (32/64-bit), 7 (32/64-bit), 8.0, 8.1, 10/11** — every AppCompatCache version.
 
 > **ShimCache is not proof of execution by itself.** An entry means the file was present on a shimmed path; the Windows 7/8 execution flag is the execution witness. Findings are observations ("consistent with …"), never verdicts.
 

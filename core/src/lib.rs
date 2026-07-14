@@ -137,7 +137,7 @@ fn win8_entry_variant(blob: &[u8]) -> Option<bool> {
 ///
 /// # Errors
 /// Returns [`ShimcacheError`] for a too-short blob, an unknown signature, or a recognized but
-/// undecoded legacy (XP/2003/Vista) format. Individual malformed entries are skipped, not fatal.
+/// unknown signature. Individual malformed entries are skipped, not fatal.
 pub fn parse(blob: &[u8]) -> Result<Vec<ShimcacheEntry>, ShimcacheError> {
     let sig = read_u32(blob, 0).ok_or(ShimcacheError::TooShort { len: blob.len() })?;
     match sig {
@@ -161,8 +161,25 @@ const XP_ENTRY: usize = 552;
 const XP_PATH_BYTES: usize = 528;
 
 fn parse_xp(blob: &[u8]) -> Vec<ShimcacheEntry> {
-    let _ = blob; // RED stub
-    Vec::new()
+    let n = read_u32(blob, 4).unwrap_or(0) as usize;
+    let mut out = Vec::new();
+    for i in 0..n {
+        let base = XP_HEADER + i * XP_ENTRY;
+        let Some(path) = read_utf16_inline(blob, base, XP_PATH_BYTES) else {
+            break;
+        };
+        let path = path.trim_end_matches('\u{0}').to_string();
+        if path.is_empty() {
+            continue;
+        }
+        let last_mod = read_u64(blob, base + XP_PATH_BYTES).unwrap_or(0);
+        out.push(ShimcacheEntry {
+            path: path.strip_prefix("\\??\\").unwrap_or(&path).to_string(),
+            last_modified_filetime: last_mod,
+            executed: None,
+        });
+    }
+    out
 }
 
 /// Windows 2003/Vista/2008 (`0xbadc0ffe`): an 8-byte header (signature, count) then fixed-size
@@ -189,8 +206,40 @@ fn detect_2003_bitness(blob: &[u8]) -> ShimcacheFormat {
 }
 
 fn parse_2003(blob: &[u8], fmt: ShimcacheFormat) -> Vec<ShimcacheEntry> {
-    let _ = (blob, fmt); // RED stub
-    Vec::new()
+    let n = read_u32(blob, 4).unwrap_or(0) as usize;
+    let is_32 = fmt == ShimcacheFormat::Win2003_32;
+    let entry_size = if is_32 {
+        WIN2003_ENTRY_32
+    } else {
+        WIN2003_ENTRY_64
+    };
+    let mut out = Vec::new();
+    for i in 0..n {
+        let base = WIN2003_HEADER + i * entry_size;
+        let Some(path_size) = read_u16(blob, base) else {
+            break;
+        };
+        let (path_offset, last_mod) = if is_32 {
+            (
+                read_u32(blob, base + 4).map(u64::from),
+                read_u64(blob, base + 8),
+            )
+        } else {
+            (read_u64(blob, base + 8), read_u64(blob, base + 16))
+        };
+        let (Some(po), Some(lm)) = (path_offset, last_mod) else {
+            continue;
+        };
+        let Some(path) = read_utf16_path(blob, po as usize, path_size as usize) else {
+            continue;
+        };
+        out.push(ShimcacheEntry {
+            path,
+            last_modified_filetime: lm,
+            executed: None,
+        });
+    }
+    out
 }
 
 /// Windows 7 header is 128 bytes; the fixed-size entry records begin there and the path strings
