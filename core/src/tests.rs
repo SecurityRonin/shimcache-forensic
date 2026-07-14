@@ -159,6 +159,8 @@ fn unknown_signature_names_the_value() {
         Err(ShimcacheError::UnknownSignature { signature }) => assert_eq!(signature, 0x1234_5678),
         other => panic!("expected UnknownSignature, got {other:?}"),
     }
+    // detect_format returns None for a recognized-length but unknown signature.
+    assert_eq!(detect_format(&blob), None);
 }
 
 #[test]
@@ -207,4 +209,81 @@ fn empty_utf16_and_non_ascii_paths_decode() {
     let blob = build_win7_32(&[("C:\\Ünïcödé\\日本語.exe", 1, true)]);
     let e = parse(&blob).unwrap();
     assert_eq!(e[0].path, "C:\\Ünïcödé\\日本語.exe");
+}
+
+/// Build a Windows 7 64-bit blob with one entry whose `path_offset` is set explicitly (used to
+/// exercise the out-of-bounds path skip).
+fn build_win7_64_one(path_size: u16, path_offset: u64) -> Vec<u8> {
+    let mut blob = vec![0u8; 128 + 48];
+    blob[0..4].copy_from_slice(&signature::WIN7.to_le_bytes());
+    blob[4..8].copy_from_slice(&1u32.to_le_bytes());
+    let r = &mut blob[128..176];
+    r[0..2].copy_from_slice(&path_size.to_le_bytes());
+    r[8..16].copy_from_slice(&path_offset.to_le_bytes());
+    blob
+}
+
+#[test]
+fn win7_entry_with_out_of_bounds_path_offset_is_skipped() {
+    // path_offset points past the end of the blob → the entry is skipped, not a panic.
+    let blob = build_win7_64_one(10, 9_999_999);
+    assert_eq!(detect_format(&blob), Some(ShimcacheFormat::Win7_64));
+    assert!(parse(&blob).unwrap().is_empty());
+}
+
+#[test]
+fn win8_truncations_break_cleanly() {
+    let mut base = vec![0u8; 132];
+    base[0..4].copy_from_slice(&signature::WIN8.to_le_bytes());
+    base[128..132].copy_from_slice(ENTRY_SIG_8_0);
+    // (a) entry sig present but no cached_entry_data_size → break, zero entries.
+    assert!(parse(&base).unwrap().is_empty());
+    // (b) header + data_size but no path_size.
+    let mut b = base.clone();
+    b.extend_from_slice(&[0u8; 8]); // unknown1(4)+data_size(4)
+    assert!(parse(&b).unwrap().is_empty());
+    // (c) path_size claims more bytes than remain → path read fails, break.
+    let mut c = base.clone();
+    c.extend_from_slice(&0u32.to_le_bytes()); // unknown1
+    c.extend_from_slice(&99u32.to_le_bytes()); // data_size
+    c.extend_from_slice(&200u16.to_le_bytes()); // path_size=200 but nothing follows
+    assert!(parse(&c).unwrap().is_empty());
+}
+
+#[test]
+fn win10_truncations_break_cleanly() {
+    let mut base = vec![0u8; signature::WIN10_CREATORS as usize];
+    base[0..4].copy_from_slice(&signature::WIN10_CREATORS.to_le_bytes());
+    base.extend_from_slice(ENTRY_SIG_8_1); // entry sig, then nothing → break at data_size
+    assert!(parse(&base).unwrap().is_empty());
+    // + data_size but no path_size
+    let mut b = base.clone();
+    b.extend_from_slice(&[0u8; 8]);
+    assert!(parse(&b).unwrap().is_empty());
+    // + path_size too large
+    let mut c = base.clone();
+    c.extend_from_slice(&0u32.to_le_bytes());
+    c.extend_from_slice(&99u32.to_le_bytes());
+    c.extend_from_slice(&200u16.to_le_bytes());
+    assert!(parse(&c).unwrap().is_empty());
+}
+
+#[test]
+fn error_display_messages_show_the_offending_value() {
+    assert!(ShimcacheError::TooShort { len: 3 }
+        .to_string()
+        .contains('3'));
+    assert!(ShimcacheError::UnknownSignature {
+        signature: 0xabad_1dea
+    }
+    .to_string()
+    .contains("abad1dea"));
+}
+
+#[test]
+fn win8_entry_variant_none_on_short_blob() {
+    // A WIN8 signature but a blob too short to hold the entry signature at 128.
+    let mut blob = signature::WIN8.to_le_bytes().to_vec();
+    blob.resize(100, 0);
+    assert_eq!(detect_format(&blob), None);
 }
