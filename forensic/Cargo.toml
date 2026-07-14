@@ -1,0 +1,20 @@
+[package]
+name = "shimcache-forensic"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Windows AppCompatCache (ShimCache) forensic analyzer — reads the AppCompatCache value from a SYSTEM hive and reports executed/present binaries with last-modification times and graded findings (masquerading, suspicious-location execution)."
+license.workspace = true
+authors.workspace = true
+keywords = ["forensics", "shimcache", "appcompatcache", "windows", "dfir"]
+categories = ["command-line-utilities", "parser-implementations"]
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+shimcache-core = { workspace = true }
+winreg-core = { workspace = true }
+forensicnomicon = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = ["core", "forensic"]
+
+# Single source of truth for fields shared by every member (DRY): bump MSRV /
+# license / repository here once; members inherit via `field.workspace = true`.
+# `version` is intentionally NOT hoisted — core and forensic are versioned
+# independently, so each keeps its own inline.
+[workspace.package]
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+authors = ["Albert Hui"]
+repository = "https://github.com/SecurityRonin/shimcache-forensic"
+readme = "README.md"
+
+# Single source of truth for dependency versions (DRY): declare each once;
+# members write `dep.workspace = true`. The inter-crate `shimcache-core` version
+# lives here too, so a bump touches one line instead of every member + dev-dep.
+[workspace.dependencies]
+shimcache-core = { path = "core", version = "0.1.0" }
+# Generic REGF hive parser — the forensic layer reads the AppCompatCache value
+# blob out of a SYSTEM hive with it, then hands the blob to shimcache-core.
+winreg-core = "0.2"
+forensicnomicon = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all                   = { level = "warn", priority = -1 }
+pedantic              = { level = "warn", priority = -1 }
+correctness           = { level = "deny",  priority = -1 }
+suspicious            = { level = "deny",  priority = -1 }
+unwrap_used           = { level = "deny",  priority = 0  }
+expect_used           = { level = "deny",  priority = 0  }
+module_name_repetitions = { level = "allow", priority = 1 }
+must_use_candidate    = { level = "allow", priority = 1 }
+missing_errors_doc    = { level = "allow", priority = 1 }
+missing_panics_doc    = { level = "allow", priority = 1 }
+cast_possible_truncation = { level = "allow", priority = 1 }
+cast_possible_wrap    = { level = "allow", priority = 1 }
+cast_sign_loss        = { level = "allow", priority = 1 }
+cast_precision_loss   = { level = "allow", priority = 1 }
+too_many_lines        = { level = "allow", priority = 1 }
