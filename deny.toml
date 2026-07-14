@@ -15,7 +15,9 @@ allow = [
 ]
 
 [bans]
-multiple-versions = "deny"
+# Transitive duplicate versions (e.g. syn v1 + v2) are often unavoidable; warn, don't fail —
+# matching the fleet convention (usb-forensic, mbr-partition-forensic).
+multiple-versions = "warn"
 wildcards = "deny"
 # Intra-workspace `{ path = … }` deps appear as wildcard `*` requirements; allow
 # those while still catching real wildcard registry deps.
