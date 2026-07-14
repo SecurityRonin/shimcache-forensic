@@ -1,4 +1,4 @@
-//! Tier-1 end-to-end validation of the `shim4n6` binary against a real `SYSTEM` hive — exercises
+//! Tier-1 end-to-end validation of the `shimcache4n6` binary against a real `SYSTEM` hive — exercises
 //! the `winreg-core` control-set navigation + `AppCompatCache` value extraction that the library's
 //! `analyze_blob` does not. Env-gated on `SHIMCACHE_TEST_SYSTEM_HIVE`.
 //!
@@ -8,17 +8,17 @@
 #![allow(clippy::unwrap_used)]
 
 #[test]
-fn shim4n6_analyzes_a_real_system_hive_end_to_end() {
+fn shimcache4n6_analyzes_a_real_system_hive_end_to_end() {
     let Ok(path) = std::env::var("SHIMCACHE_TEST_SYSTEM_HIVE") else {
         eprintln!("SKIP: set SHIMCACHE_TEST_SYSTEM_HIVE to a real SYSTEM hive (e.g. CFReDS)");
         return;
     };
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_shim4n6"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_shimcache4n6"))
         .arg(&path)
         .output()
-        .expect("run shim4n6");
+        .expect("run shimcache4n6");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "shim4n6 failed: {:?}", out.status);
+    assert!(out.status.success(), "shimcache4n6 failed: {:?}", out.status);
     // The whole-hive path reads Win7-64 AppCompatCache from ControlSet001 → 292 entries.
     assert!(
         stdout.contains("Win7_64, ControlSet001, 292 entries"),

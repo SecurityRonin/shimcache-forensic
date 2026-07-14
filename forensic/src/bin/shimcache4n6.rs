@@ -1,4 +1,4 @@
-//! `shim4n6` — read a Windows `SYSTEM` hive's AppCompatCache (ShimCache) and print the shimmed
+//! `shimcache4n6` — read a Windows `SYSTEM` hive's AppCompatCache (ShimCache) and print the shimmed
 //! executables (path, last-modification time, execution flag) plus graded findings.
 //!
 //! The decoding + analysis live in the `shimcache_forensic` / `shimcache_core` libraries; this
@@ -22,7 +22,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let list = args.iter().any(|a| a == "--list");
     let Some(hive_path) = args.iter().find(|a| !a.starts_with("--")) else {
-        eprintln!("usage: shim4n6 <SYSTEM-hive> [--list]   (--list dumps every cache entry)");
+        eprintln!("usage: shimcache4n6 <SYSTEM-hive> [--list]   (--list dumps every cache entry)");
         return ExitCode::from(2);
     };
 
@@ -32,7 +32,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(msg) => {
-            eprintln!("shim4n6: {hive_path}: {msg}");
+            eprintln!("shimcache4n6: {hive_path}: {msg}");
             ExitCode::FAILURE
         }
     }

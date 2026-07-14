@@ -11,8 +11,8 @@
 ## Run it
 
 ```console
-$ cargo install shimcache-forensic          # installs the shim4n6 binary
-$ shim4n6 /path/to/SYSTEM
+$ cargo install shimcache-forensic          # installs the shimcache4n6 binary
+$ shimcache4n6 /path/to/SYSTEM
 AppCompatCache: Win7_64, ControlSet001, 292 entries
 Findings (29):
   [MEDIUM] SHIMCACHE-SUSPICIOUS-PATH  C:\Users\INFORM~1\AppData\Local\Temp\eraserInstallBootstrapper\dotNetFx40_Full_setup.exe
@@ -32,11 +32,11 @@ The AppCompatCache value at `HKLM\SYSTEM\CurrentControlSet\Control\Session Manag
 ## Layers
 
 - **`shimcache-core`** — the pure decoder: `parse(&[u8]) -> Vec<ShimcacheEntry>`. No registry dependency, `#![forbid(unsafe_code)]`, panic-free (bounds-checked). Reusable anywhere the raw value bytes are in hand.
-- **`shimcache-forensic`** — `analyze_blob` + `audit` (graded `forensicnomicon` findings) and the `shim4n6` CLI, which reads the value out of a hive with [`winreg-core`](https://crates.io/crates/winreg-core).
+- **`shimcache-forensic`** — `analyze_blob` + `audit` (graded `forensicnomicon` findings) and the `shimcache4n6` CLI, which reads the value out of a hive with [`winreg-core`](https://crates.io/crates/winreg-core).
 
 ## Validation
 
-Tier-1 against a **real** Windows 7 64-bit AppCompatCache from the NIST **CFReDS** "Data Leakage" `SYSTEM` hive (public domain): all **292 entries** decode with `LogonUI.exe`/`bfsvc.exe` matching two independent oracles — Mandiant's `ShimCacheParser` and a from-spec read of libyal's dtfabric `appcompatcache.yaml`. `shim4n6` reproduces the same result end-to-end from the hive, surfacing the case's Temp/`$Recycle.Bin` executions. See `core/tests/data/README.md`.
+Tier-1 against a **real** Windows 7 64-bit AppCompatCache from the NIST **CFReDS** "Data Leakage" `SYSTEM` hive (public domain): all **292 entries** decode with `LogonUI.exe`/`bfsvc.exe` matching two independent oracles — Mandiant's `ShimCacheParser` and a from-spec read of libyal's dtfabric `appcompatcache.yaml`. `shimcache4n6` reproduces the same result end-to-end from the hive, surfacing the case's Temp/`$Recycle.Bin` executions. See `core/tests/data/README.md`.
 
 ## Findings
 

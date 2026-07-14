@@ -7,7 +7,7 @@
 //! path (masquerading) and an entry in a known-suspicious directory.
 //!
 //! This is a *pure* library: it takes the already-extracted AppCompatCache value bytes. Reading
-//! that value out of a `SYSTEM` hive is `winreg-core`'s job — the bundled `shim4n6` binary wires
+//! that value out of a `SYSTEM` hive is `winreg-core`'s job — the bundled `shimcache4n6` binary wires
 //! the two together (`winreg-core` → this crate), so a consumer that already has a hive open can
 //! do the same 5-line extraction with `winreg-core` and call [`analyze_blob`].
 //!
