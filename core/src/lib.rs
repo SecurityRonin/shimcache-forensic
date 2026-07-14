@@ -110,8 +110,19 @@ impl std::error::Error for ShimcacheError {}
 /// the signature is unrecognized.
 #[must_use]
 pub fn detect_format(blob: &[u8]) -> Option<ShimcacheFormat> {
-    let _ = blob; // RED stub
-    None
+    let sig = read_u32(blob, 0)?;
+    match sig {
+        signature::WIN7 => Some(detect_win7_bitness(blob)),
+        signature::WIN8 => win8_entry_variant(blob).map(|is_8_1| {
+            if is_8_1 {
+                ShimcacheFormat::Win8_1
+            } else {
+                ShimcacheFormat::Win8_0
+            }
+        }),
+        signature::WIN10 | signature::WIN10_CREATORS => Some(ShimcacheFormat::Win10),
+        _ => None,
+    }
 }
 
 /// For a Windows 8 header, read the first cached-entry signature at offset 128 and report which
@@ -130,8 +141,19 @@ fn win8_entry_variant(blob: &[u8]) -> Option<bool> {
 /// Returns [`ShimcacheError`] for a too-short blob, an unknown signature, or a recognized but
 /// undecoded legacy (XP/2003/Vista) format. Individual malformed entries are skipped, not fatal.
 pub fn parse(blob: &[u8]) -> Result<Vec<ShimcacheEntry>, ShimcacheError> {
-    let _ = blob; // RED stub
-    Ok(Vec::new())
+    let sig = read_u32(blob, 0).ok_or(ShimcacheError::TooShort { len: blob.len() })?;
+    match sig {
+        signature::WIN7 => Ok(parse_win7(blob, detect_win7_bitness(blob))),
+        signature::WIN8 => match win8_entry_variant(blob) {
+            Some(is_8_1) => Ok(parse_win8(blob, 128, is_8_1)),
+            None => Err(ShimcacheError::UnknownSignature { signature: sig }),
+        },
+        signature::WIN10 | signature::WIN10_CREATORS => Ok(parse_win10(blob, sig as usize)),
+        signature::WINXP | signature::WIN2003_VISTA => {
+            Err(ShimcacheError::UnsupportedLegacy { signature: sig })
+        }
+        _ => Err(ShimcacheError::UnknownSignature { signature: sig }),
+    }
 }
 
 /// Windows 7 header is 128 bytes; the fixed-size entry records begin there and the path strings
