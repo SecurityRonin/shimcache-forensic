@@ -6,7 +6,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-h4x0r-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/h4x0r)
 
-**Prove what was on a Windows box — and, on Windows 7/8, what *ran* — straight from the `SYSTEM` hive's AppCompatCache (ShimCache), on any OS.** A panic-free decoder (Windows XP through 11) plus an analyzer that flags masquerading and execution from staging directories.
+**Prove what was on a Windows box — and, on Windows 7/8, what *ran* — straight from the `SYSTEM` hive's AppCompatCache (ShimCache), on any OS.** A panic-free-by-construction decoder (Windows XP through 11) plus an analyzer that flags masquerading and execution from staging directories.
 
 ## Run it
 
