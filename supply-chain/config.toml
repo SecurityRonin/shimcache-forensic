@@ -17,10 +17,10 @@ url = "https://raw.githubusercontent.com/google/rust-crate-audits/main/audits.to
 url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 
 [policy.shimcache-core]
-audit-as-crates-io = true
+audit-as-crates-io = false
 
 [policy.shimcache-forensic]
-audit-as-crates-io = true
+audit-as-crates-io = false
 
 [[exemptions.binrw]]
 version = "0.4.0"
